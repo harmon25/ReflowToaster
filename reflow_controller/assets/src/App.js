@@ -12,7 +12,7 @@ class App extends Component {
     return (
       <Grid container >
         <Row centered columns={1}>
-          <Column textAlign="centered">
+          <Column textAlign="center">
             <Header as="h1" content="Reflow Controller" />
           </Column>
         </Row>
