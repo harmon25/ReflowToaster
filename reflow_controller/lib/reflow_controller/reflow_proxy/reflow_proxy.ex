@@ -8,6 +8,21 @@ defmodule ReflowProxy do
     end
 
 
+
+   def handle_call({:read_temp, oven}, _from, state) do
+       
+   end
+
+   def handle_call(:read_temp, _from, state) do
+       [oven] = state
+       GenServer.cast(oven.pid, :read_temp)
+       resp = 
+        receive do
+                resp -> resp
+        end
+       {:reply, resp, state}
+   end
+
     def handle_call(:stop_reflow, _from, state) do
         new_state = 
             Enum.map(state, fn(o)-> 
@@ -68,22 +83,12 @@ defmodule ReflowProxy do
         {:reply, resp, new_state }
     end
 
-    def handle_cast({:add_oven, new_oven}, state) do
-
-        new_state =
-            if Enum.any?(state, fn(o)-> o.ip == new_oven.ip end) do
-               state
-            else
-               [new_oven | state]
-            end
-                
-        {:noreply, new_state }
+    def handle_cast({:add_oven, new_oven}, state) do               
+        {:noreply, [new_oven | state] }
     end
 
     def handle_cast({:remove_oven, ip}, state) do
-
-        new_state = 
-            Enum.filter(state, fn(o)-> o.ip != ip end)
+        new_state = Enum.filter(state, fn(o)-> o.ip != ip end)
               
         {:noreply, new_state }
     end
@@ -96,8 +101,12 @@ defmodule ReflowProxy do
         GenServer.cast(__MODULE__, {:remove_oven, ip})
     end
 
-    def start_reflow() do
+   def start_reflow() do
          GenServer.call(__MODULE__, :start_reflow)
+    end
+
+    def read_temp() do
+         GenServer.call(__MODULE__, :read_temp)
     end
 
     def start_reflow(ip) do

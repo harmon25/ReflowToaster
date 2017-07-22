@@ -14,7 +14,7 @@ config :reflow_controller, ReflowController.Web.Endpoint,
            adapter: Phoenix.PubSub.PG2]
 
 config :reflow_controller,
-  log_to_file: true,
+  log_to_file: false,
   log_file_path: "log.csv"
 
 

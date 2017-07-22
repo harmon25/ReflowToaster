@@ -11,8 +11,11 @@ defmodule ReflowController.Application do
       # Start the endpoint when the application starts
       supervisor(ReflowController.Web.Endpoint, []),
       # Start your own worker by calling: ReflowController.Worker.start_link(arg1, arg2, arg3)
-      worker(ReflowProxy.Listener, []),
-      worker(ReflowProxy, []),
+      worker(Task, [ReflowProxyListener, :accept, [9000]], name: ReflowProxyListener),
+      worker(ReflowProxy, [], name: ReflowProxy),
+      supervisor(ReflowProxyListener.Supervisor, [])
+      #worker(ReflowProxy.Listener, []),
+      #worker(ReflowProxy, []),
     ]
 
     # See http://elixir-lang.org/docs/stable/elixir/Supervisor.html
