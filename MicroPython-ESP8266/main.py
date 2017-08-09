@@ -13,7 +13,7 @@ from reflow_oven import ReflowOven
 #oven.on()
 #oven.off()
 
-controller_address = ("192.168.11.27", 9000)
+controller_address = ("192.168.25.104", 9000)
 
 reflowOven = ReflowOven(thermocouple, oven, controller_address, wlan)
 

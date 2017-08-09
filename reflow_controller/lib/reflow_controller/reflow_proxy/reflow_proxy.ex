@@ -1,90 +1,62 @@
 defmodule ReflowProxy do
     use GenServer
     require Logger
+    alias ReflowController.Command
+
+    defmodule Oven do
+        defstruct ip: nil, pid: nil, reflowing: false, temp: nil
+    end
+
     @initial_state []
 
     def start_link() do
         GenServer.start_link(__MODULE__, @initial_state, name: __MODULE__)
     end
 
-
-
-   def handle_call({:read_temp, oven}, _from, state) do
-       
-   end
-
    def handle_call(:read_temp, _from, state) do
        [oven] = state
        GenServer.cast(oven.pid, :read_temp)
-       resp = 
-        receive do
-                resp -> resp
-        end
-       {:reply, resp, state}
+       resp = receive_resp()
+       {:reply, resp, [%Oven{oven | temp: resp}]}
    end
 
-    def handle_call(:stop_reflow, _from, state) do
-        new_state = 
-            Enum.map(state, fn(o)-> 
-                %{o | reflowing: false}
-            end)
-        
-        [resp] =  Enum.map(state, fn(o)-> 
-                    send_msg(o.socket, %{cmd: "STOP_REFLOW"})
-                end)
-   
-        {:reply, resp, new_state}
-    end
-    
-
-    def handle_call({:stop_reflow, ip}, _from, state) do
-        
-        {new_state, resp} = 
-            case Enum.find(state, nil, fn(o)-> o.ip == ip end) do
-                nil -> 
-                    Logger.error "No oven with that ip"
-                    {state, {:error, "No oven with that ip"} }
-                oven -> 
-                    ovens = Enum.filter(state, fn(o)-> o.ip != oven.ip end)
-                    resp = send_msg(oven.socket, %{cmd: "STOP_REFLOW"})
-                    {[%{oven | reflowing: false} | ovens], resp}
-            end
-
-        {:reply, resp, new_state }
-    end
-
     def handle_call(:start_reflow, _from, state) do
-        new_state = 
-            Enum.map(state, fn(o)->
-                %{o | reflowing: true}
-            end)
+        [oven] = state
+        GenServer.cast(oven.pid, :start_reflow)
+        resp = receive_resp()
+       {:reply, resp, [%Oven{oven | reflowing: true}]}
+   end
 
-        [resp] =  Enum.map(state, fn(o)-> 
-                    send_msg(o.socket, %{cmd: "START_REFLOW"})
-                end)
+   def handle_cast(:stop_reflow, state) do
+        new_state = Enum.map(state, fn(o)-> 
+        GenServer.cast(o.pid, :start_reflow)
+            %Oven{o | reflowing: false} end)
+       {:noreply, new_state }
+   end
 
-        {:reply, resp ,new_state}
-    end
-    
+   def handle_cast({:reflow_msg, temp}, state) do
+        IO.inspect temp
+       {:noreply, state }
+   end
 
-    def handle_call({:start_reflow, ip}, state) do
-        
-         {new_state, resp} = 
-            case Enum.find(state, nil, fn(o)-> o.ip == ip end) do
-                nil -> 
-                    Logger.error "No oven with that ip"
-                    {state, {:error, "No oven with that ip"} }
-                oven -> 
-                    resp = send_msg(oven.socket, %{cmd: "START_REFLOW"})
-                    ovens = Enum.filter(state, fn(o)-> o.ip != oven.ip end)
-                   { [%{oven | reflowing: true} | ovens], resp}
-            end
 
-        {:reply, resp, new_state }
-    end
+   def receive_resp() do
+        receive do
+            %{"cmd_msg"=> "STOP_REFLOW", "resp"=> "OK"} = msg -> 
+                GenServer.cast(self(), :stop_reflow)
+                :ok
+            %{"msg_type"=> "TEMP", "DATA"=> temp} = msg ->         
+                temp
+            msg ->
+                msg
+ 
+        end
+   end
 
-    def handle_cast({:add_oven, new_oven}, state) do               
-        {:noreply, [new_oven | state] }
+    def handle_cast({:add_oven, new_oven}, state) do
+        oven = %Oven{}   
+        new_state = Enum.reject(state , fn(o)-> o.ip == new_oven.ip end)        
+        {:noreply, [Map.merge(oven, new_oven) | new_state] }
     end
 
     def handle_cast({:remove_oven, ip}, state) do
@@ -108,6 +80,7 @@ defmodule ReflowProxy do
     def read_temp() do
          GenServer.call(__MODULE__, :read_temp)
     end
+        
 
     def start_reflow(ip) do
         GenServer.call(__MODULE__, {:start_reflow, ip})
@@ -128,18 +101,4 @@ defmodule ReflowProxy do
     def add_oven(oven) do
         GenServer.cast(__MODULE__, {:add_oven, oven})
     end
-
-
-
-    defp send_msg(socket, msg) do
-        json_msg = Poison.encode!(msg)
-        :ranch_tcp.send(socket, to_charlist(json_msg))
-        case :ranch_tcp.recv(socket, 0, 750) do
-            {:ok, resp} -> Poison.decode(resp)
-            {:error, _} -> nil
-        end
-    end
-
-
-
 end

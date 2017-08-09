@@ -13,7 +13,13 @@ defmodule ReflowProxyListener do
   defp loop_acceptor(socket) do
     import Supervisor.Spec
     {:ok, client} = Socket.accept(socket, mode: :active)
-    {:ok, pid} = ReflowProxyListener.Supervisor.start_handler(client)
+
+    pid = 
+      case ReflowProxyListener.Supervisor.start_handler(client) do
+        {:ok, pid} -> pid
+        {:error, {:already_started, pid}} -> pid
+      end
+      
     :ok = Socket.process(client, pid)
     loop_acceptor(socket)
   end

@@ -4,7 +4,7 @@ defmodule ReflowProxy.Server do
     use GenServer
 
     defmodule State do
-        defstruct port: nil, sock: nil, request_count: 0, response: nil
+        defstruct port: nil, sock: nil, request_count: 0
     end
 
     def start_link(sock) do
@@ -15,15 +15,23 @@ defmodule ReflowProxy.Server do
         {:ok, %State{sock: sock}}
     end
 
-    def handle_info(:timeout, %State{sock: sock} = state) do
-        #Task.async(fn-> Socket.TCP.accept(sock) end)
-        { :noreply, state }
-    end
 
     def handle_cast(:read_temp, %State{sock: sock} = state) do
-        cmd = %{cmd: "READ_TEMP"} |> Poison.encode!()
-        sock = Socket.Stream.send!(sock, "#{cmd}\n")
+        msg = %{cmd_type: "READ_TEMP"} |> gen_message()
+        sock = Socket.Stream.send!(sock, msg)
         {:noreply, %State{state | sock: sock} }
+    end
+
+    def handle_cast(:start_reflow, %State{sock: sock} = state) do
+        msg = %{cmd_type: "START_REFLOW"} |> gen_message()
+        sock = Socket.Stream.send!(sock, msg)
+        {:noreply, %State{state | sock: sock} }
+    end
+
+    def handle_info(:timeout, %State{sock: sock} = state) do
+        #Task.async(fn-> Socket.TCP.accept(sock) end)
+        IO.puts "TIMEDOUT ERROR - remove oven"
+        { :noreply, state }
     end
 
     def handle_info({ :tcp, socket, raw_data}, state) do
@@ -41,33 +49,40 @@ defmodule ReflowProxy.Server do
         Poison.decode(raw_data)
         |> case() do
             {:ok, json} -> json
-            {:error, error} -> %{"ERROR"=> true, "DATA"=> "JSON parsing error"}
+            {:error, error} -> %{"err"=> true, "data"=> "JSON parsing error"}
         end
         |> oven_msg(state)
     end
 
-    defp oven_msg(%{"MSG"=> "HELLO", "DATA"=> ip} = msg, state) do
+    defp oven_msg(%{"msg_type"=> "HELLO", "data"=> ip} = msg_type, state) do
         IO.puts "HELLO MSG"
         ReflowProxy.add_oven(%{ip: ip, pid: self()})
         state
     end
 
-    defp oven_msg(%{"MSG"=> "TEMP", "DATA"=> temp_c} = msg, state) do
-        IO.puts "TEMP MSG"
-        IO.inspect msg
+    defp oven_msg(%{"msg_type"=> "OK"} = msg, state) do
         send(ReflowProxy, msg)
-        %State{state | response: temp_c}
+        state
     end
 
-    defp oven_msg(%{"ERROR"=> true} = msg, state) do
-        IO.puts "ERROR MSG"
-        IO.inspect msg
+    defp oven_msg(%{"msg_type"=> "TEMP", "DATA"=> temp_c} = msg, state) do
+        send(ReflowProxy, msg)
+        state
+    end
+
+    defp oven_msg(%{"err"=> true, "data"=> err} = msg, state) do
+        send(ReflowProxy, msg)
+        state
     end
 
     defp oven_msg(msg, state) do
         IO.puts "OTHER MSG"
         IO.inspect msg
         state
+    end
+
+    defp gen_message(message) do
+        Poison.encode!(message) <> "\n"
     end
 
 
